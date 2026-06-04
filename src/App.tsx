@@ -65,25 +65,41 @@ export default function App() {
   const currentPlayer = match?.players[playerId];
 
   useEffect(() => {
-    if (!effectiveMatch || !zone || !currentPlayer || currentPlayer.status === 'out') return;
-    const inside = playerIsInside(effectiveMatch, currentPlayer.location, now);
-    const outsideSince = inside ? null : currentPlayer.outsideSince ?? now;
+    if (!effectiveMatch || !zone) return;
 
-    if (shouldEliminatePlayer(effectiveMatch, outsideSince, now)) {
-      void upsertPlayer(effectiveMatch.code, {
-        ...currentPlayer,
-        status: 'out',
-        outsideSince,
-        eliminatedAt: now,
-        lastSeenAt: now,
-      });
-      return;
-    }
+    const trackedPlayers = Object.values(effectiveMatch.players).filter((player) => {
+      if (player.status === 'out') return false;
 
-    if (outsideSince !== currentPlayer.outsideSince) {
-      void upsertPlayer(effectiveMatch.code, { ...currentPlayer, outsideSince, lastSeenAt: now });
+      // The host is authoritative for all visible player markers. A player
+      // client also evaluates itself so warnings and eliminations still happen
+      // while a host is not actively watching the match.
+      return isHost || player.id === playerId;
+    });
+
+    for (const player of trackedPlayers) {
+      const location = player.id === playerId ? player.location ?? locationState.location : player.location;
+      if (!location) continue;
+
+      const inside = playerIsInside(effectiveMatch, location, now);
+      const outsideSince = inside ? null : player.outsideSince ?? now;
+
+      if (shouldEliminatePlayer(effectiveMatch, outsideSince, now)) {
+        void upsertPlayer(effectiveMatch.code, {
+          ...player,
+          location,
+          status: 'out',
+          outsideSince,
+          eliminatedAt: now,
+          lastSeenAt: now,
+        });
+        continue;
+      }
+
+      if (outsideSince !== player.outsideSince || location !== player.location) {
+        void upsertPlayer(effectiveMatch.code, { ...player, location, outsideSince, lastSeenAt: now });
+      }
     }
-  }, [currentPlayer, effectiveMatch, now, zone]);
+  }, [effectiveMatch, isHost, locationState.location, now, playerId, zone]);
 
   useEffect(() => {
     if (!match || !zone?.isFinished || match.phase === 'ended') return;
