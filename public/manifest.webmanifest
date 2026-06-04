@@ -1,0 +1,11 @@
+{
+  "name": "Battle Royale Live",
+  "short_name": "BR Live",
+  "description": "Mobile-first live safe-zone controller for outdoor battle royale games.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#070b0a",
+  "theme_color": "#070b0a",
+  "orientation": "portrait",
+  "icons": []
+}
