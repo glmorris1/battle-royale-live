@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#203129"/>
+      <stop offset="0.55" stop-color="#0d1714"/>
+      <stop offset="1" stop-color="#111817"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="760" fill="url(#bg)"/>
+  <g opacity="0.55" stroke="#49655a" stroke-width="2" fill="none">
+    <path d="M0 116 C166 92 272 147 410 124 S681 62 832 101 1054 181 1200 137"/>
+    <path d="M0 257 C148 213 286 288 420 247 S690 176 822 229 1051 319 1200 259"/>
+    <path d="M0 430 C150 400 256 462 403 427 S672 350 816 393 1032 513 1200 446"/>
+    <path d="M0 625 C139 559 286 648 421 594 S683 520 830 574 1044 692 1200 620"/>
+    <path d="M135 0 C110 164 178 286 145 405 S75 620 116 760"/>
+    <path d="M336 0 C305 141 384 266 349 391 S288 604 321 760"/>
+    <path d="M557 0 C514 154 596 268 560 398 S491 607 531 760"/>
+    <path d="M798 0 C761 142 831 291 793 423 S720 599 758 760"/>
+    <path d="M1011 0 C978 168 1037 280 1002 414 S942 604 986 760"/>
+  </g>
+  <g opacity="0.34" fill="#91a799">
+    <path d="M91 181 l83 -34 92 34 -28 86 -102 25 -65 -48z"/>
+    <path d="M828 104 l176 37 69 93 -112 57 -154 -40 -54 -91z"/>
+    <path d="M193 519 l151 -58 101 91 -71 115 -151 -1 -83 -83z"/>
+    <path d="M698 468 l145 -59 174 45 67 118 -101 80 -191 -24 -117 -76z"/>
+  </g>
+  <g opacity="0.9" stroke-linecap="round" fill="none">
+    <path d="M84 356 C223 318 329 347 458 306 S700 201 858 263 1059 390 1120 364" stroke="#d9e3dc" stroke-width="8" opacity="0.24"/>
+    <path d="M93 356 C224 322 331 351 461 311 S698 210 850 269 1056 386 1110 365" stroke="#9aa9a1" stroke-width="3" opacity="0.7"/>
+    <path d="M309 74 C369 199 343 317 426 401 S634 490 696 688" stroke="#d9e3dc" stroke-width="7" opacity="0.18"/>
+    <path d="M311 84 C367 204 348 319 431 397 S632 487 690 676" stroke="#9aa9a1" stroke-width="3" opacity="0.55"/>
+  </g>
+  <g filter="url(#shadow)">
+    <circle cx="674" cy="382" r="205" fill="#80ed5a" opacity="0.13"/>
+    <circle cx="674" cy="382" r="205" fill="none" stroke="#8ef05c" stroke-width="8"/>
+    <circle cx="674" cy="382" r="96" fill="#ffcf5a" opacity="0.13"/>
+    <circle cx="674" cy="382" r="96" fill="none" stroke="#ffcf5a" stroke-width="5" stroke-dasharray="18 14"/>
+    <circle cx="731" cy="419" r="8" fill="#ffcf5a"/>
+    <circle cx="731" cy="419" r="20" fill="none" stroke="#ffcf5a" stroke-width="4" opacity="0.7"/>
+  </g>
+  <g font-family="Arial, sans-serif" font-weight="700" letter-spacing="0" opacity="0.8">
+    <text x="52" y="62" fill="#c9d7cf" font-size="28">LIVE ZONE MAP</text>
+    <text x="52" y="102" fill="#8ef05c" font-size="18">SAFE AREA SHRINKING</text>
+  </g>
+</svg>
