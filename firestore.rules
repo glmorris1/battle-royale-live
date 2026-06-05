@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /matches/{code} {
+      // Prototype rules for live field testing. Any player with a match code can
+      // read and update that match document. Tighten these before public use.
+      allow read, create, update, delete: if true;
+    }
+  }
+}
