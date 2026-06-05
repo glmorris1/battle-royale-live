@@ -213,31 +213,6 @@ button {
   padding: 16px;
 }
 
-.destination-status {
-  display: grid;
-  gap: 4px;
-  border: 1px dashed rgba(142, 240, 92, 0.32);
-  border-radius: 8px;
-  background: rgba(142, 240, 92, 0.06);
-  padding: 12px;
-}
-
-.destination-status span {
-  color: #94a39b;
-  font-size: 0.74rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.destination-status strong {
-  color: #8ef05c;
-}
-
-.destination-status small {
-  color: #aebbb4;
-  overflow-wrap: anywhere;
-}
-
 label {
   display: grid;
   gap: 8px;

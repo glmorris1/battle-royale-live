@@ -12,6 +12,7 @@ type Unsubscribe = () => void;
 
 const LOCAL_PREFIX = 'brl:match:';
 const localListeners = new Map<string, Set<(match: Match | null) => void>>();
+const FIREBASE_WRITE_TIMEOUT_MS = 10_000;
 
 function localKey(code: string) {
   return `${LOCAL_PREFIX}${code.toUpperCase()}`;
@@ -58,6 +59,19 @@ function stripUndefined<T>(value: T): T {
   return value;
 }
 
+function withFirebaseTimeout<T>(operation: Promise<T>, action: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      reject(new Error(`Firebase did not finish ${action}. Check the connection or Firebase quota, then try again.`));
+    }, FIREBASE_WRITE_TIMEOUT_MS);
+
+    operation
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeout));
+  });
+}
+
 export function subscribeToMatch(code: string, callback: (match: Match | null) => void): Unsubscribe {
   const normalizedCode = normalizeCode(code);
 
@@ -89,7 +103,10 @@ export function subscribeToMatch(code: string, callback: (match: Match | null) =
 export async function createMatch(match: Match) {
   const normalized = { ...match, code: normalizeCode(match.code) };
   if (firebaseConfigured && db) {
-    await setDoc(doc(db, 'matches', normalized.code), stripUndefined(publicFirebaseMatch(normalized)));
+    await withFirebaseTimeout(
+      setDoc(doc(db, 'matches', normalized.code), stripUndefined(publicFirebaseMatch(normalized))),
+      'creating the lobby',
+    );
     return;
   }
   writeLocalMatch(normalized);
@@ -99,7 +116,7 @@ export async function patchMatch(code: string, patch: Partial<Match>) {
   const normalizedCode = normalizeCode(code);
   if (firebaseConfigured && db) {
     const { hiddenEndpoint: _hiddenEndpoint, ...publicPatch } = patch;
-    await updateDoc(doc(db, 'matches', normalizedCode), stripUndefined(publicPatch));
+    await withFirebaseTimeout(updateDoc(doc(db, 'matches', normalizedCode), stripUndefined(publicPatch)), 'updating the match');
     return;
   }
 
@@ -112,9 +129,12 @@ export async function upsertPlayer(code: string, player: Player) {
   const normalizedCode = normalizeCode(code);
   const cleanPlayer = stripUndefined(player);
   if (firebaseConfigured && db) {
-    await updateDoc(doc(db, 'matches', normalizedCode), {
-      [`players.${cleanPlayer.id}`]: cleanPlayer,
-    });
+    await withFirebaseTimeout(
+      updateDoc(doc(db, 'matches', normalizedCode), {
+        [`players.${cleanPlayer.id}`]: cleanPlayer,
+      }),
+      'saving the player',
+    );
     return;
   }
 
@@ -132,7 +152,7 @@ export async function upsertPlayer(code: string, player: Player) {
 export async function clearMatch(code: string) {
   const normalizedCode = normalizeCode(code);
   if (firebaseConfigured && db) {
-    await deleteDoc(doc(db, 'matches', normalizedCode));
+    await withFirebaseTimeout(deleteDoc(doc(db, 'matches', normalizedCode)), 'clearing the match');
     return;
   }
 

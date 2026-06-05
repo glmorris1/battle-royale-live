@@ -321,45 +321,17 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
     }
   }
 
-  function useCurrentLocation() {
-    setSetupError('');
-    if (!navigator.geolocation) {
-      setSetupError('GPS is not available in this browser.');
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setEndpoint({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-      },
-      (error) => setSetupError(error.message || 'Could not get current location.'),
-      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 5_000 },
-    );
-  }
-
   return (
     <section className="screen map-setup">
       <div className="section-heading">
         <p className="eyebrow">Host setup</p>
         <h1>Set the final destination</h1>
-        <p>Tap the map or use GPS to set the hidden endpoint, then create the lobby and invite players.</p>
+        <p>Tap the map to set the hidden endpoint, choose the circle settings, then create the lobby.</p>
       </div>
 
       <SafeZoneMap selectable selectedPoint={endpoint} onSelectPoint={setEndpoint} showEndpoint className="setup-map" />
 
       <div className="control-panel">
-        <div className="destination-status">
-          <span>Destination</span>
-          <strong>{endpoint ? 'Selected' : 'Not selected'}</strong>
-          <small>{endpoint ? `${endpoint.lat.toFixed(5)}, ${endpoint.lng.toFixed(5)}` : 'Tap the map or use your current GPS position.'}</small>
-        </div>
-        <button className="secondary" type="button" onClick={useCurrentLocation}>
-          <Crosshair />
-          Use current location
-        </button>
         <label>
           Starting diameter
           <div className="input-row">
@@ -378,7 +350,6 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
           <Users />
           {busy ? 'Creating lobby...' : 'Create lobby'}
         </button>
-        {!endpoint ? <p className="muted">Choose a final destination before creating the lobby.</p> : null}
         {setupError ? <p className="warning-text">{setupError}</p> : null}
       </div>
     </section>
