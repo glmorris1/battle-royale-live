@@ -32,9 +32,24 @@ export function generateStartingCircleCenter(
 
 export function calculateSafeZone(match: Match, now = Date.now()): SafeZoneState | null {
   if (!match.hiddenEndpoint && match.visibleSafeZone) {
+    const duration = Math.max(1, match.shrinkDurationMs);
+    const elapsed = match.startedAt ? Math.max(0, now - match.startedAt) : 0;
+    const progress = Math.min(1, elapsed / duration);
+    const startRadius = match.startingDiameterMeters / 2;
+    const endRadius = match.finalDiameterMeters / 2;
+    const radiusMeters = startRadius + (endRadius - startRadius) * progress;
+
+    // Player clients do not receive the hidden endpoint, so they cannot safely
+    // interpolate the center themselves. They use the latest host-published
+    // center, but compute radius from timestamps so shrinking never freezes
+    // between Firestore updates or if the host publish loop is throttled.
     return {
       ...match.visibleSafeZone,
-      timeRemainingMs: match.startedAt ? Math.max(0, match.shrinkDurationMs - (now - match.startedAt)) : match.visibleSafeZone.timeRemainingMs,
+      radiusMeters,
+      diameterMeters: radiusMeters * 2,
+      progress,
+      timeRemainingMs: Math.max(0, duration - elapsed),
+      isFinished: progress >= 1 || radiusMeters * 2 <= FINAL_DIAMETER_METERS,
     };
   }
 
