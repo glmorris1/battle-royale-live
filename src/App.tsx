@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { SafeZoneMap } from './components/SafeZoneMap';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useIntervalNow } from './hooks/useIntervalNow';
-import { clearMatch, createMatch, patchMatch, subscribeToMatch, upsertPlayer } from './services/matchStore';
+import { cacheResultsSnapshot, clearMatch, createMatch, patchMatch, subscribeToMatch, upsertPlayer } from './services/matchStore';
 import type { Coordinate, Match, Player, View } from './types';
 import { DEFAULT_START_DIAMETER_METERS, FINAL_DIAMETER_METERS, formatDistance, haversineDistanceMeters, milesToMeters } from './utils/geo';
 import {
@@ -158,6 +158,7 @@ export default function App() {
 
   useEffect(() => {
     if (!match || !zone?.isFinished || match.phase === 'ended') return;
+    cacheResultsSnapshot(match);
     void patchMatch(match.code, { phase: 'ended', endedAt: now });
     setView('results');
   }, [match, now, zone?.isFinished]);
@@ -630,6 +631,7 @@ function HostPanel({ match, now, onGoResults }: { match: Match; now: number; onG
   const players = Object.values(match.players).sort((a, b) => a.name.localeCompare(b.name));
 
   async function endMatch() {
+    cacheResultsSnapshot(match);
     await patchMatch(match.code, { phase: 'ended', endedAt: now });
     onGoResults();
   }
@@ -680,6 +682,7 @@ function ResultsScreen({ match, isHost, onClear }: { match: Match; isHost: boole
   const eliminated = players.filter((player) => player.status === 'out');
 
   async function clear() {
+    cacheResultsSnapshot(match);
     await clearMatch(match.code);
     onClear();
   }

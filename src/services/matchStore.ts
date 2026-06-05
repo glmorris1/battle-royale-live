@@ -1,9 +1,12 @@
 import {
+  collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   setDoc,
   updateDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db, firebaseConfigured } from './firebase';
 import type { Match, Player } from '../types';
@@ -11,11 +14,16 @@ import type { Match, Player } from '../types';
 type Unsubscribe = () => void;
 
 const LOCAL_PREFIX = 'brl:match:';
+const LOCAL_RESULTS_PREFIX = 'brl:results:';
 const localListeners = new Map<string, Set<(match: Match | null) => void>>();
 const FIREBASE_WRITE_TIMEOUT_MS = 10_000;
 
 function localKey(code: string) {
   return `${LOCAL_PREFIX}${code.toUpperCase()}`;
+}
+
+function localResultsKey(code: string) {
+  return `${LOCAL_RESULTS_PREFIX}${code.toUpperCase()}`;
 }
 
 function normalizeCode(code: string) {
@@ -39,8 +47,8 @@ function writeLocalMatch(match: Match) {
 }
 
 function publicFirebaseMatch(match: Match): Match {
-  const { hiddenEndpoint: _hiddenEndpoint, ...publicMatch } = match;
-  return publicMatch;
+  const { hiddenEndpoint: _hiddenEndpoint, players: _players, ...publicMatch } = match;
+  return { ...publicMatch, players: {} };
 }
 
 function stripUndefined<T>(value: T): T {
@@ -76,9 +84,27 @@ export function subscribeToMatch(code: string, callback: (match: Match | null) =
   const normalizedCode = normalizeCode(code);
 
   if (firebaseConfigured && db) {
-    return onSnapshot(doc(db, 'matches', normalizedCode), (snapshot) => {
-      callback(snapshot.exists() ? (snapshot.data() as Match) : null);
+    let baseMatch: Match | null = null;
+    let players: Record<string, Player> = {};
+
+    const emitCloudMatch = () => {
+      callback(baseMatch ? { ...baseMatch, players } : null);
+    };
+
+    const unsubscribeMatch = onSnapshot(doc(db, 'matches', normalizedCode), (snapshot) => {
+      baseMatch = snapshot.exists() ? (snapshot.data() as Match) : null;
+      emitCloudMatch();
     });
+
+    const unsubscribePlayers = onSnapshot(collection(db, 'matches', normalizedCode, 'players'), (snapshot) => {
+      players = Object.fromEntries(snapshot.docs.map((playerDoc) => [playerDoc.id, playerDoc.data() as Player]));
+      emitCloudMatch();
+    });
+
+    return () => {
+      unsubscribeMatch();
+      unsubscribePlayers();
+    };
   }
 
   const listeners = localListeners.get(normalizedCode) ?? new Set();
@@ -115,7 +141,7 @@ export async function createMatch(match: Match) {
 export async function patchMatch(code: string, patch: Partial<Match>) {
   const normalizedCode = normalizeCode(code);
   if (firebaseConfigured && db) {
-    const { hiddenEndpoint: _hiddenEndpoint, ...publicPatch } = patch;
+    const { hiddenEndpoint: _hiddenEndpoint, players: _players, ...publicPatch } = patch;
     await withFirebaseTimeout(updateDoc(doc(db, 'matches', normalizedCode), stripUndefined(publicPatch)), 'updating the match');
     return;
   }
@@ -130,9 +156,7 @@ export async function upsertPlayer(code: string, player: Player) {
   const cleanPlayer = stripUndefined(player);
   if (firebaseConfigured && db) {
     await withFirebaseTimeout(
-      updateDoc(doc(db, 'matches', normalizedCode), {
-        [`players.${cleanPlayer.id}`]: cleanPlayer,
-      }),
+      setDoc(doc(db, 'matches', normalizedCode, 'players', cleanPlayer.id), cleanPlayer, { merge: true }),
       'saving the player',
     );
     return;
@@ -152,12 +176,20 @@ export async function upsertPlayer(code: string, player: Player) {
 export async function clearMatch(code: string) {
   const normalizedCode = normalizeCode(code);
   if (firebaseConfigured && db) {
-    await withFirebaseTimeout(deleteDoc(doc(db, 'matches', normalizedCode)), 'clearing the match');
+    const playersSnapshot = await withFirebaseTimeout(getDocs(collection(db, 'matches', normalizedCode, 'players')), 'loading match cleanup');
+    const batch = writeBatch(db);
+    playersSnapshot.docs.forEach((playerDoc) => batch.delete(playerDoc.ref));
+    batch.delete(doc(db, 'matches', normalizedCode));
+    await withFirebaseTimeout(batch.commit(), 'clearing the match');
     return;
   }
 
   localStorage.removeItem(localKey(normalizedCode));
   emitLocal(normalizedCode);
+}
+
+export function cacheResultsSnapshot(match: Match) {
+  localStorage.setItem(localResultsKey(match.code), JSON.stringify({ ...match, cachedAt: Date.now() }));
 }
 
 export function isCloudSyncEnabled() {

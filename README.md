@@ -13,6 +13,7 @@ Battle Royale Live is a mobile-first React + Vite app for running an outdoor bat
 - Outside-zone countdown with shrinking grace time:
   `max(5 seconds, 20 seconds * currentCircleDiameter / startingCircleDiameter)`.
 - Firebase Firestore sync when configured, with localStorage simulation fallback when not configured.
+- Firestore player subdocuments for live GPS/status updates, reducing write contention on the match document.
 - Location permission flow, host cleanup, and safety reminder.
 - Host sample players for testing without physically moving.
 - PWA-ready manifest for future installability work.
@@ -48,7 +49,14 @@ VITE_FIREBASE_APP_ID=your_app_id
 
 The GitHub Pages workflow currently builds with the `battleroyaleirl` Firebase web app config so invite links can sync across phones on the deployed site.
 
-The included `firestore.rules` file is intentionally open for prototype field testing. In Firebase Console, publish equivalent rules for `matches/{code}` or start Firestore in test mode. For a real public game app, lock rules down around match codes, host keys, and write limits.
+The included `firestore.rules` file is intentionally open for prototype field testing. In Firebase Console, publish equivalent rules for `matches/{code}` and `matches/{code}/players/{playerId}` or start Firestore in test mode. For a real public game app, lock rules down around match codes, host keys, and write limits.
+
+Cloud data is split like this:
+
+- `matches/{code}` stores lobby/game state, timing, and the public safe zone.
+- `matches/{code}/players/{playerId}` stores each player's live GPS/status document.
+
+When the host clears a finished match, the app deletes the match document and all player subdocuments from Firestore. Before cleanup, the host browser caches a local results snapshot in `localStorage`; it is not uploaded back to Firebase.
 
 ## Map Setup
 
@@ -110,4 +118,4 @@ Capacitor location support may require adding iOS usage strings such as `NSLocat
 
 Use this only in approved outdoor areas. Avoid roads, private property, unsafe terrain, and bystanders. Wear appropriate safety gear and follow local rules.
 
-Player locations are intended for active match use only. Hosts can clear match data from the results screen. For production Firebase use, configure retention and security rules so ended match data is removed or expires.
+Player locations are intended for active match use only. Hosts can clear match data from the results screen, which removes the active Firebase match/player documents after caching a browser-local results snapshot. For production Firebase use, also consider an automated TTL/cleanup job so abandoned lobbies expire even if a host never taps clear.

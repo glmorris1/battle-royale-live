@@ -5,6 +5,12 @@ service cloud.firestore {
       // Prototype rules for live field testing. Any player with a match code can
       // read and update that match document. Tighten these before public use.
       allow read, create, update, delete: if true;
+
+      match /players/{playerId} {
+        // Player location/status is stored separately to avoid every phone
+        // writing into the same match document during live play.
+        allow read, create, update, delete: if true;
+      }
     }
   }
 }
