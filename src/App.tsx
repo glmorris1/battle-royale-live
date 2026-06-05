@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { SafeZoneMap } from './components/SafeZoneMap';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useIntervalNow } from './hooks/useIntervalNow';
-import { clearMatch, createMatch, isCloudSyncEnabled, patchMatch, subscribeToMatch, upsertPlayer } from './services/matchStore';
+import { clearMatch, createMatch, patchMatch, subscribeToMatch, upsertPlayer } from './services/matchStore';
 import type { Coordinate, Match, Player, View } from './types';
 import { DEFAULT_START_DIAMETER_METERS, FINAL_DIAMETER_METERS, formatDistance, milesToMeters } from './utils/geo';
 import {
@@ -51,7 +51,6 @@ export default function App() {
   const [privateEndpoint, setPrivateEndpoint] = useState<Coordinate | null>(null);
   const [playerId] = useState(getPlayerId);
   const [locationEnabled, setLocationEnabled] = useState(false);
-  const [simulationMode, setSimulationMode] = useState(false);
   const now = useIntervalNow(500);
   const locationState = useGeolocation(locationEnabled);
 
@@ -146,9 +145,6 @@ export default function App() {
           <Shield size={20} />
           <span>Battle Royale Live</span>
         </button>
-        <span className={isCloudSyncEnabled() ? 'sync-pill online' : 'sync-pill'}>
-          {isCloudSyncEnabled() ? 'Firebase sync' : 'Local sim'}
-        </span>
       </header>
 
       {view === 'home' ? <HomeScreen onHost={() => setView('setup')} onJoin={enterMatch} /> : null}
@@ -185,9 +181,6 @@ export default function App() {
           isHost={isHost}
           currentPlayer={currentPlayer}
           currentLocation={locationState.location}
-          simulationMode={simulationMode}
-          onEnableLocation={() => setLocationEnabled(true)}
-          onToggleSimulation={() => setSimulationMode((value) => !value)}
           onGoResults={() => setView('results')}
         />
       ) : null}
@@ -201,10 +194,8 @@ function HomeScreen({ onHost, onJoin }: { onHost: () => void; onJoin: (code: str
 
   return (
     <section className="screen stack">
-      <div className="hero-panel">
-        <p className="eyebrow">Outdoor safe-zone controller</p>
-        <h1>Run the shrinking circle from any phone.</h1>
-        <p>Host a match, share a code, and track whether each player is inside the live zone.</p>
+      <div className="home-hero-map" aria-label="Map preview with a shrinking battle royale circle">
+        <img src="./hero-map.svg" alt="Map preview with safe-zone circles" />
       </div>
       <SafetyPanel />
       <div className="action-grid">
@@ -230,16 +221,19 @@ function HomeScreen({ onHost, onJoin }: { onHost: () => void; onJoin: (code: str
 
 function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: string, endpoint: Coordinate) => void }) {
   const [endpoint, setEndpoint] = useState<Coordinate | null>(null);
-  const [diameterMiles, setDiameterMiles] = useState(1);
-  const [durationMinutes, setDurationMinutes] = useState(30);
+  const [diameterMiles, setDiameterMiles] = useState('1');
+  const [durationMinutes, setDurationMinutes] = useState('30');
   const [busy, setBusy] = useState(false);
+  const parsedDiameterMiles = Number(diameterMiles);
+  const parsedDurationMinutes = Number(durationMinutes);
+  const canCreateLobby = Boolean(endpoint && parsedDiameterMiles >= 0.1 && parsedDurationMinutes >= 1 && !busy);
 
   async function createLobby() {
-    if (!endpoint) return;
+    if (!endpoint || !canCreateLobby) return;
     setBusy(true);
     const code = generateMatchCode();
     const hostKey = generateHostKey();
-    const startingDiameterMeters = milesToMeters(diameterMiles);
+    const startingDiameterMeters = milesToMeters(parsedDiameterMiles);
     const startCenter = generateStartingCircleCenter(endpoint, startingDiameterMeters);
     const match: Match = {
       code,
@@ -250,13 +244,13 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
       hiddenEndpoint: endpoint,
       startingDiameterMeters,
       finalDiameterMeters: FINAL_DIAMETER_METERS,
-      shrinkDurationMs: durationMinutes * 60_000,
+      shrinkDurationMs: parsedDurationMinutes * 60_000,
       visibleSafeZone: {
         center: startCenter,
         radiusMeters: startingDiameterMeters / 2,
         diameterMeters: startingDiameterMeters,
         progress: 0,
-        timeRemainingMs: durationMinutes * 60_000,
+        timeRemainingMs: parsedDurationMinutes * 60_000,
         isFinished: false,
         publishedAt: Date.now(),
       },
@@ -272,7 +266,7 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
     <section className="screen map-setup">
       <div className="section-heading">
         <p className="eyebrow">Host setup</p>
-        <h1>Set the final circle</h1>
+        <h1>Set the final destination</h1>
         <p>Select the hidden endpoint, starting diameter, and shrink time. Then create the lobby and invite players.</p>
       </div>
 
@@ -282,18 +276,18 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
         <label>
           Starting diameter
           <div className="input-row">
-            <input type="number" min="0.1" step="0.1" value={diameterMiles} onChange={(event) => setDiameterMiles(Number(event.target.value))} />
+            <input type="number" min="0.1" step="0.1" value={diameterMiles} onChange={(event) => setDiameterMiles(event.target.value)} />
             <span>miles</span>
           </div>
         </label>
         <label>
           Total shrink time
           <div className="input-row">
-            <input type="number" min="1" step="1" value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))} />
+            <input type="number" min="1" step="1" value={durationMinutes} onChange={(event) => setDurationMinutes(event.target.value)} />
             <span>minutes</span>
           </div>
         </label>
-        <button className="primary xl" type="button" disabled={!endpoint || busy} onClick={createLobby}>
+        <button className="primary xl" type="button" disabled={!canCreateLobby} onClick={createLobby}>
           <Users />
           Create lobby
         </button>
@@ -370,7 +364,7 @@ function JoinScreen({
           <div className="match-code">{match.code}</div>
           <p className="ok-text">{match.phase === 'setup' ? 'Lobby found. Waiting for host.' : 'Game is live.'}</p>
           <label htmlFor="player-name">Display name</label>
-          <input id="player-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={joinedPlayer?.name ?? 'Random if blank'} />
+          <input id="player-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={joinedPlayer?.name ?? 'Random name will be assigned if left blank'} />
           <p className="muted">Enable GPS before joining so the host can see you as ready.</p>
           <button className="secondary" type="button" onClick={onLocationRequest}>
             <Crosshair />
@@ -398,9 +392,6 @@ function LiveGameScreen({
   isHost,
   currentPlayer,
   currentLocation,
-  simulationMode,
-  onEnableLocation,
-  onToggleSimulation,
   onGoResults,
 }: {
   match: Match;
@@ -409,9 +400,6 @@ function LiveGameScreen({
   isHost: boolean;
   currentPlayer?: Player;
   currentLocation?: Coordinate;
-  simulationMode: boolean;
-  onEnableLocation: () => void;
-  onToggleSimulation: () => void;
   onGoResults: () => void;
 }) {
   const players = Object.values(match.players);
@@ -530,9 +518,7 @@ function LiveGameScreen({
           </p>
         ) : null}
         <div className="button-row">
-          <button className="secondary" type="button" onClick={onEnableLocation}>Enable GPS</button>
-          <button className="secondary" type="button" onClick={onToggleSimulation}>{simulationMode ? 'Simulation on' : 'Simulation mode'}</button>
-          {simulationMode || isHost ? <button className="secondary" type="button" onClick={addSimulatedPlayers}>Add sample players</button> : null}
+          {isHost ? <button className="secondary" type="button" onClick={addSimulatedPlayers}>Add sample players</button> : null}
         </div>
         {isHost ? <HostPanel match={match} now={now} onGoResults={onGoResults} /> : <PlayerPanel player={currentPlayer} />}
       </div>
