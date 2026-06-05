@@ -42,6 +42,22 @@ function publicFirebaseMatch(match: Match): Match {
   return publicMatch;
 }
 
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefined(item)) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .map(([key, entryValue]) => [key, stripUndefined(entryValue)]),
+    ) as T;
+  }
+
+  return value;
+}
+
 export function subscribeToMatch(code: string, callback: (match: Match | null) => void): Unsubscribe {
   const normalizedCode = normalizeCode(code);
 
@@ -94,9 +110,10 @@ export async function patchMatch(code: string, patch: Partial<Match>) {
 
 export async function upsertPlayer(code: string, player: Player) {
   const normalizedCode = normalizeCode(code);
+  const cleanPlayer = stripUndefined(player);
   if (firebaseConfigured && db) {
     await updateDoc(doc(db, 'matches', normalizedCode), {
-      [`players.${player.id}`]: player,
+      [`players.${cleanPlayer.id}`]: cleanPlayer,
     });
     return;
   }
@@ -107,7 +124,7 @@ export async function upsertPlayer(code: string, player: Player) {
     ...current,
     players: {
       ...current.players,
-      [player.id]: player,
+      [cleanPlayer.id]: cleanPlayer,
     },
   });
 }
