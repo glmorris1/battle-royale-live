@@ -195,7 +195,7 @@ function HomeScreen({ onHost, onJoin }: { onHost: () => void; onJoin: (code: str
   return (
     <section className="screen stack">
       <div className="home-hero-map" aria-label="Map preview with a shrinking battle royale circle">
-        <img src="./hero-map.svg" alt="Map preview with safe-zone circles" />
+        <img src="./hero-map.png" alt="Map preview with safe-zone circles" />
       </div>
       <SafetyPanel />
       <div className="action-grid">
