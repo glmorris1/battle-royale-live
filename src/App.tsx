@@ -1,5 +1,5 @@
 import { AlertTriangle, Crosshair, MapPinned, Menu, MessageCircle, Play, Shield, Trash2, Users, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SafeZoneMap } from './components/SafeZoneMap';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useIntervalNow } from './hooks/useIntervalNow';
@@ -43,6 +43,11 @@ function joinUrl(code: string) {
   return `${location.origin}${location.pathname}?match=${code}`;
 }
 
+function sameLocation(a?: Coordinate, b?: Coordinate) {
+  if (!a || !b) return a === b;
+  return a.lat === b.lat && a.lng === b.lng;
+}
+
 export default function App() {
   const [view, setView] = useState<View>(getInitialCode() ? 'join' : 'home');
   const [matchCode, setMatchCode] = useState(getInitialCode());
@@ -52,6 +57,8 @@ export default function App() {
   const [playerId] = useState(getPlayerId);
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const outsideSinceRef = useRef(new Map<string, number>());
+  const lastVibrationSecondRef = useRef<number | null>(null);
   const now = useIntervalNow(500);
   const locationState = useGeolocation(locationEnabled);
 
@@ -67,9 +74,17 @@ export default function App() {
   );
   const zone = useMemo(() => (effectiveMatch ? calculateSafeZone(effectiveMatch, now) : null), [effectiveMatch, now]);
   const currentPlayer = match?.players[playerId];
+  const displayedCurrentPlayer = useMemo(() => {
+    const localOutsideSince = outsideSinceRef.current.get(playerId);
+    if (!currentPlayer || !localOutsideSince || currentPlayer.outsideSince) return currentPlayer;
+    return { ...currentPlayer, outsideSince: localOutsideSince };
+  }, [currentPlayer, now, playerId]);
 
   useEffect(() => {
-    if (!effectiveMatch || !zone || effectiveMatch.phase !== 'live') return;
+    if (!effectiveMatch || !zone || effectiveMatch.phase !== 'live') {
+      outsideSinceRef.current.clear();
+      return;
+    }
 
     const trackedPlayers = Object.values(effectiveMatch.players).filter((player) => {
       if (player.status === 'out') return false;
@@ -81,9 +96,17 @@ export default function App() {
       if (!locationValue) continue;
 
       const inside = playerIsInside(effectiveMatch, locationValue, now);
-      const outsideSince = inside ? null : player.outsideSince ?? now;
+      const cachedOutsideSince = outsideSinceRef.current.get(player.id);
+      const outsideSince = inside ? null : player.outsideSince ?? cachedOutsideSince ?? now;
+
+      if (inside) {
+        outsideSinceRef.current.delete(player.id);
+      } else {
+        outsideSinceRef.current.set(player.id, outsideSince ?? now);
+      }
 
       if (shouldEliminatePlayer(effectiveMatch, outsideSince, now)) {
+        outsideSinceRef.current.delete(player.id);
         void upsertPlayer(effectiveMatch.code, {
           ...player,
           location: locationValue,
@@ -95,7 +118,7 @@ export default function App() {
         continue;
       }
 
-      if (outsideSince !== player.outsideSince || locationValue !== player.location) {
+      if (outsideSince !== player.outsideSince || !sameLocation(locationValue, player.location)) {
         void upsertPlayer(effectiveMatch.code, { ...player, location: locationValue, outsideSince, lastSeenAt: now });
       }
     }
@@ -121,9 +144,32 @@ export default function App() {
   }, [effectiveMatch, isHost, zone]);
 
   useEffect(() => {
-    if (!match || !currentPlayer || !locationState.location || currentPlayer.status === 'out') return;
+    if (!match || !currentPlayer || !locationState.location || currentPlayer.status === 'out' || match.phase === 'live') return;
     void upsertPlayer(match.code, { ...currentPlayer, location: locationState.location, lastSeenAt: now });
   }, [currentPlayer, locationState.location, match, now]);
+
+  useEffect(() => {
+    if (!effectiveMatch || !zone || effectiveMatch.phase !== 'live' || !displayedCurrentPlayer || displayedCurrentPlayer.status === 'out') {
+      lastVibrationSecondRef.current = null;
+      return;
+    }
+
+    const playerLocation = displayedCurrentPlayer.location ?? locationState.location;
+    const outside = !playerIsInside(effectiveMatch, playerLocation, now);
+    if (!outside) {
+      lastVibrationSecondRef.current = null;
+      return;
+    }
+
+    const remainingMs = getOutsideRemainingMs(displayedCurrentPlayer.outsideSince, zone.diameterMeters, effectiveMatch.startingDiameterMeters, now);
+    const remainingSecond = Math.ceil(remainingMs / 1000);
+    if (remainingSecond <= 0 || remainingSecond === lastVibrationSecondRef.current) return;
+
+    lastVibrationSecondRef.current = remainingSecond;
+    if ('vibrate' in navigator) {
+      navigator.vibrate(120);
+    }
+  }, [displayedCurrentPlayer, effectiveMatch, locationState.location, now, zone]);
 
   function enterMatch(code: string, nextView: View = 'join') {
     const normalized = code.trim().toUpperCase();
@@ -185,7 +231,7 @@ export default function App() {
           zone={zone}
           now={now}
           isHost={isHost}
-          currentPlayer={currentPlayer}
+          currentPlayer={displayedCurrentPlayer}
           currentLocation={locationState.location}
           onGoResults={() => setView('results')}
         />
