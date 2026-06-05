@@ -33,7 +33,7 @@ Firebase is recommended for real matches because multiple phones need shared gam
 1. Create a Firebase project.
 2. Enable Firestore Database.
 3. Add a web app in Firebase project settings.
-4. Create a `.env.local` file:
+4. Create a `.env.local` file for local development:
 
 ```bash
 VITE_FIREBASE_API_KEY=your_api_key
@@ -46,7 +46,9 @@ VITE_FIREBASE_APP_ID=your_app_id
 
 5. Restart `npm run dev`.
 
-The included `firestore.rules` file from the prior project should be reviewed before production use. For a real public game app, lock rules down around match codes, host keys, and write limits.
+The GitHub Pages workflow currently builds with the `battleroyaleirl` Firebase web app config so invite links can sync across phones on the deployed site.
+
+The included `firestore.rules` file is intentionally open for prototype field testing. In Firebase Console, publish equivalent rules for `matches/{code}` or start Firestore in test mode. For a real public game app, lock rules down around match codes, host keys, and write limits.
 
 ## Map Setup
 
@@ -60,8 +62,9 @@ The endpoint is stored as host-only match data and is only shown in host view. P
 2. Tap the map to choose the hidden final endpoint.
 3. Keep the default 1 mile starting diameter or change it.
 4. Set total shrink time.
-5. Start the game and share the match code or join link.
-6. Players enter the code, enter a name, grant location permission, and join.
+5. Create the lobby and share the invite link from the lobby screen.
+6. Players open the link, enter a name or use a generated callsign, grant location permission, and join the lobby.
+7. The host starts the game when ready.
 
 The host can see active and eliminated players. Players only see their own status unless host mode is active.
 
