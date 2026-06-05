@@ -14,7 +14,7 @@ Battle Royale Live is a mobile-first React + Vite app for running an outdoor bat
   `max(5 seconds, 20 seconds * currentCircleDiameter / startingCircleDiameter)`.
 - Firebase Firestore sync when configured, with localStorage simulation fallback when not configured.
 - Location permission flow, host cleanup, and safety reminder.
-- Local simulation mode with sample players for testing without physically moving.
+- Host sample players for testing without physically moving.
 - PWA-ready manifest for future installability work.
 
 ## Local Setup
@@ -24,7 +24,7 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal. For local-only testing, Firebase is optional; the app will use browser localStorage and label itself `Local sim`.
+Open the Vite URL shown in the terminal. For local-only testing, Firebase is optional; the app will use browser localStorage on the current device.
 
 ## Firebase Setup
 
@@ -70,7 +70,7 @@ The host can see active and eliminated players. Players only see their own statu
 
 ## Local Simulation
 
-Without Firebase, match codes work in the same browser using localStorage. On the live game screen, use `Simulation mode` and `Add sample players` to test circle shrinking and player states without walking around.
+Without Firebase, match codes work in the same browser using localStorage. Hosts can use `Add sample players` on the live game screen to test circle shrinking and player states without walking around.
 
 ## Build
 
