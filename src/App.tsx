@@ -1,4 +1,4 @@
-import { AlertTriangle, Crosshair, MapPinned, MessageCircle, Play, Shield, Trash2, Users } from 'lucide-react';
+import { AlertTriangle, Crosshair, MapPinned, Menu, MessageCircle, Play, Shield, Trash2, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { SafeZoneMap } from './components/SafeZoneMap';
 import { useGeolocation } from './hooks/useGeolocation';
@@ -51,6 +51,7 @@ export default function App() {
   const [privateEndpoint, setPrivateEndpoint] = useState<Coordinate | null>(null);
   const [playerId] = useState(getPlayerId);
   const [locationEnabled, setLocationEnabled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const now = useIntervalNow(500);
   const locationState = useGeolocation(locationEnabled);
 
@@ -136,6 +137,7 @@ export default function App() {
     setMatchCode('');
     setMatch(null);
     setPrivateEndpoint(null);
+    setMenuOpen(false);
   }
 
   return (
@@ -145,7 +147,11 @@ export default function App() {
           <Shield size={20} />
           <span>Battle Royale Live</span>
         </button>
+        <button className="icon-button" type="button" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
+          <Menu size={22} />
+        </button>
       </header>
+      {menuOpen ? <AppMenu onClose={() => setMenuOpen(false)} /> : null}
 
       {view === 'home' ? <HomeScreen onHost={() => setView('setup')} onJoin={enterMatch} /> : null}
       {view === 'setup' ? (
@@ -197,7 +203,6 @@ function HomeScreen({ onHost, onJoin }: { onHost: () => void; onJoin: (code: str
       <div className="home-hero-map" aria-label="Map preview with a shrinking battle royale circle">
         <img src="./hero-map.png" alt="Map preview with safe-zone circles" />
       </div>
-      <SafetyPanel />
       <div className="action-grid">
         <button className="primary xl" type="button" onClick={onHost}>
           <MapPinned />
@@ -610,11 +615,28 @@ function ResultsScreen({ match, isHost, onClear }: { match: Match; isHost: boole
   );
 }
 
-function SafetyPanel() {
+function AppMenu({ onClose }: { onClose: () => void }) {
   return (
-    <div className="safety-panel">
-      <AlertTriangle />
-      <p>Play only in approved areas, avoid roads and private property, wear proper eye protection, and follow local rules.</p>
+    <div className="menu-backdrop" role="presentation" onClick={onClose}>
+      <aside className="app-menu" aria-label="Application menu" onClick={(event) => event.stopPropagation()}>
+        <div className="menu-header">
+          <strong>Menu</strong>
+          <button className="icon-button" type="button" aria-label="Close menu" onClick={onClose}>
+            <X size={22} />
+          </button>
+        </div>
+
+        <section>
+          <p className="eyebrow">About</p>
+          <h2>Battle Royale Live</h2>
+          <p>Host an outdoor match, share a lobby code, and run a live shrinking safe zone using player phone locations.</p>
+        </section>
+
+        <section className="menu-safety">
+          <p className="eyebrow">Safety</p>
+          <p>Play only in approved areas, avoid roads and private property, wear proper eye protection, and follow local rules.</p>
+        </section>
+      </aside>
     </div>
   );
 }

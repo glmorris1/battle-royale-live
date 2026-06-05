@@ -39,7 +39,7 @@ button {
 .top-bar {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 12px;
   margin: 0 auto 14px;
   max-width: 1040px;
@@ -53,6 +53,73 @@ button {
   background: transparent;
   padding: 8px 0;
   font-weight: 800;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  color: #f7f9fb;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.app-menu {
+  width: min(86vw, 360px);
+  min-height: 100%;
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 15, 13, 0.98);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.42);
+  padding: 18px;
+  padding-top: max(18px, env(safe-area-inset-top));
+}
+
+.menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.menu-header strong {
+  font-size: 1.05rem;
+}
+
+.app-menu section {
+  display: grid;
+  gap: 8px;
+}
+
+.app-menu h2,
+.app-menu p {
+  margin: 0;
+}
+
+.app-menu p {
+  color: #aebbb4;
+  line-height: 1.5;
+}
+
+.menu-safety {
+  border: 1px solid rgba(255, 207, 90, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 207, 90, 0.06);
+  padding: 14px;
 }
 
 .screen,
@@ -70,7 +137,6 @@ button {
 .form-card,
 .join-card,
 .control-panel,
-.safety-panel,
 .live-panel,
 .player-card,
 .result-column {
@@ -212,21 +278,6 @@ input:focus {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
-}
-
-.safety-panel {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: start;
-  gap: 12px;
-  padding: 14px;
-  color: #ffcf5a;
-}
-
-.safety-panel p {
-  margin: 0;
-  color: #f8e8ae;
-  line-height: 1.45;
 }
 
 .map-setup {
