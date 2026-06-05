@@ -39,7 +39,7 @@ button {
 .top-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   margin: 0 auto 14px;
   max-width: 1040px;
@@ -53,20 +53,6 @@ button {
   background: transparent;
   padding: 8px 0;
   font-weight: 800;
-}
-
-.sync-pill {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  color: #cbd6cf;
-  background: rgba(255, 255, 255, 0.06);
-  padding: 7px 10px;
-  font-size: 0.75rem;
-  white-space: nowrap;
-}
-
-.sync-pill.online {
-  color: #8ef05c;
 }
 
 .screen,
@@ -96,6 +82,22 @@ button {
 
 .hero-panel {
   padding: 26px;
+}
+
+.home-hero-map {
+  overflow: hidden;
+  border: 1px solid rgba(142, 240, 92, 0.2);
+  border-radius: 8px;
+  background: #101713;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.26);
+  aspect-ratio: 1.42;
+}
+
+.home-hero-map img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .hero-panel h1,
