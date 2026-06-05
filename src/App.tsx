@@ -1,16 +1,11 @@
-import { AlertTriangle, Crosshair, MapPinned, Play, Shield, Trash2, Users } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Crosshair, MapPinned, MessageCircle, Play, Shield, Trash2, Users } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { SafeZoneMap } from './components/SafeZoneMap';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useIntervalNow } from './hooks/useIntervalNow';
 import { clearMatch, createMatch, isCloudSyncEnabled, patchMatch, subscribeToMatch, upsertPlayer } from './services/matchStore';
 import type { Coordinate, Match, Player, View } from './types';
-import {
-  DEFAULT_START_DIAMETER_METERS,
-  FINAL_DIAMETER_METERS,
-  formatDistance,
-  milesToMeters,
-} from './utils/geo';
+import { DEFAULT_START_DIAMETER_METERS, FINAL_DIAMETER_METERS, formatDistance, milesToMeters } from './utils/geo';
 import {
   buildSimulatedPlayers,
   calculateSafeZone,
@@ -26,6 +21,7 @@ import {
 
 const PLAYER_ID_KEY = 'brl:player-id';
 const HOST_KEY_PREFIX = 'brl:host:';
+const RANDOM_NAMES = ['Ranger', 'Viper', 'Ghost', 'Comet', 'Blaze', 'Hawk', 'Nova', 'Rogue'];
 
 function getPlayerId() {
   const existing = localStorage.getItem(PLAYER_ID_KEY);
@@ -37,6 +33,14 @@ function getPlayerId() {
 
 function getInitialCode() {
   return new URLSearchParams(window.location.search).get('match')?.toUpperCase() ?? '';
+}
+
+function randomPlayerName() {
+  return `${RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)]}-${Math.floor(100 + Math.random() * 900)}`;
+}
+
+function joinUrl(code: string) {
+  return `${location.origin}${location.pathname}?match=${code}`;
 }
 
 export default function App() {
@@ -65,7 +69,7 @@ export default function App() {
   const currentPlayer = match?.players[playerId];
 
   useEffect(() => {
-    if (!effectiveMatch || !zone) return;
+    if (!effectiveMatch || !zone || effectiveMatch.phase !== 'live') return;
 
     const trackedPlayers = Object.values(effectiveMatch.players).filter((player) => {
       if (player.status === 'out') return false;
@@ -73,16 +77,16 @@ export default function App() {
     });
 
     for (const player of trackedPlayers) {
-      const location = player.id === playerId ? player.location ?? locationState.location : player.location;
-      if (!location) continue;
+      const locationValue = player.id === playerId ? player.location ?? locationState.location : player.location;
+      if (!locationValue) continue;
 
-      const inside = playerIsInside(effectiveMatch, location, now);
+      const inside = playerIsInside(effectiveMatch, locationValue, now);
       const outsideSince = inside ? null : player.outsideSince ?? now;
 
       if (shouldEliminatePlayer(effectiveMatch, outsideSince, now)) {
         void upsertPlayer(effectiveMatch.code, {
           ...player,
-          location,
+          location: locationValue,
           status: 'out',
           outsideSince,
           eliminatedAt: now,
@@ -91,8 +95,8 @@ export default function App() {
         continue;
       }
 
-      if (outsideSince !== player.outsideSince || location !== player.location) {
-        void upsertPlayer(effectiveMatch.code, { ...player, location, outsideSince, lastSeenAt: now });
+      if (outsideSince !== player.outsideSince || locationValue !== player.location) {
+        void upsertPlayer(effectiveMatch.code, { ...player, location: locationValue, outsideSince, lastSeenAt: now });
       }
     }
   }, [effectiveMatch, isHost, locationState.location, now, playerId, zone]);
@@ -118,11 +122,7 @@ export default function App() {
 
   useEffect(() => {
     if (!match || !currentPlayer || !locationState.location || currentPlayer.status === 'out') return;
-    void upsertPlayer(match.code, {
-      ...currentPlayer,
-      location: locationState.location,
-      lastSeenAt: now,
-    });
+    void upsertPlayer(match.code, { ...currentPlayer, location: locationState.location, lastSeenAt: now });
   }, [currentPlayer, locationState.location, match, now]);
 
   function enterMatch(code: string, nextView: View = 'join') {
@@ -136,6 +136,7 @@ export default function App() {
     setView('home');
     setMatchCode('');
     setMatch(null);
+    setPrivateEndpoint(null);
   }
 
   return (
@@ -151,14 +152,18 @@ export default function App() {
       </header>
 
       {view === 'home' ? <HomeScreen onHost={() => setView('setup')} onJoin={enterMatch} /> : null}
-      {view === 'setup' ? <MapSetupScreen onCreated={(created, key) => {
-        localStorage.setItem(`${HOST_KEY_PREFIX}${created.code}`, key);
-        setHostKey(key);
-        setPrivateEndpoint(created.hiddenEndpoint ?? null);
-        setMatchCode(created.code);
-        setMatch(created);
-        setView('live');
-      }} /> : null}
+      {view === 'setup' ? (
+        <MapSetupScreen
+          onCreated={(created, key, endpoint) => {
+            localStorage.setItem(`${HOST_KEY_PREFIX}${created.code}`, key);
+            setHostKey(key);
+            setPrivateEndpoint(endpoint);
+            setMatchCode(created.code);
+            setMatch(created);
+            setView('live');
+          }}
+        />
+      ) : null}
       {view === 'join' ? (
         <JoinScreen
           match={match}
@@ -207,7 +212,13 @@ function HomeScreen({ onHost, onJoin }: { onHost: () => void; onJoin: (code: str
           <MapPinned />
           Host match
         </button>
-        <form className="join-card" onSubmit={(event) => { event.preventDefault(); if (code.trim()) onJoin(code); }}>
+        <form
+          className="join-card"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (code.trim()) onJoin(code);
+          }}
+        >
           <label htmlFor="match-code">Join with match code</label>
           <input id="match-code" value={code} maxLength={5} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="A7K2Q" />
           <button className="secondary" type="submit">Join match</button>
@@ -217,43 +228,24 @@ function HomeScreen({ onHost, onJoin }: { onHost: () => void; onJoin: (code: str
   );
 }
 
-function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: string) => void }) {
-  const lobbyCreated = useRef(false);
-  const [lobby, setLobby] = useState<Match | null>(null);
+function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: string, endpoint: Coordinate) => void }) {
   const [endpoint, setEndpoint] = useState<Coordinate | null>(null);
   const [diameterMiles, setDiameterMiles] = useState(1);
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (lobbyCreated.current) return;
-    lobbyCreated.current = true;
+  async function createLobby() {
+    if (!endpoint) return;
+    setBusy(true);
     const code = generateMatchCode();
     const hostKey = generateHostKey();
-    const nextLobby: Match = {
+    const startingDiameterMeters = milesToMeters(diameterMiles);
+    const startCenter = generateStartingCircleCenter(endpoint, startingDiameterMeters);
+    const match: Match = {
       code,
       hostKey,
       phase: 'setup',
       createdAt: Date.now(),
-      startingDiameterMeters: DEFAULT_START_DIAMETER_METERS,
-      finalDiameterMeters: FINAL_DIAMETER_METERS,
-      shrinkDurationMs: 30 * 60_000,
-      players: {},
-    };
-    localStorage.setItem(`${HOST_KEY_PREFIX}${code}`, hostKey);
-    void createMatch(nextLobby);
-    setLobby(nextLobby);
-  }, []);
-
-  async function startMatch() {
-    if (!endpoint || !lobby) return;
-    setBusy(true);
-    const startingDiameterMeters = milesToMeters(diameterMiles);
-    const startCenter = generateStartingCircleCenter(endpoint, startingDiameterMeters);
-    const match: Match = {
-      ...lobby,
-      phase: 'live',
-      startedAt: Date.now(),
       startCenter,
       hiddenEndpoint: endpoint,
       startingDiameterMeters,
@@ -268,88 +260,242 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
         isFinished: false,
         publishedAt: Date.now(),
       },
+      players: {},
     };
-    await patchMatch(lobby.code, match);
-    setLobby(match);
-    onCreated(match, lobby.hostKey);
+
+    localStorage.setItem(`${HOST_KEY_PREFIX}${code}`, hostKey);
+    await createMatch(match);
+    onCreated(match, hostKey, endpoint);
   }
 
   return (
     <section className="screen map-setup">
       <div className="section-heading">
         <p className="eyebrow">Host setup</p>
-        <h1>Pick the final circle endpoint</h1>
-        <p>Tap the map where the one-foot final zone should end. Players will never see this point.</p>
+        <h1>Set the final circle</h1>
+        <p>Select the hidden endpoint, starting diameter, and shrink time. Then create the lobby and invite players.</p>
       </div>
+
       <SafeZoneMap selectable selectedPoint={endpoint} onSelectPoint={setEndpoint} showEndpoint className="setup-map" />
+
       <div className="control-panel">
-        {lobby ? <div className="host-code"><span>Match code</span><strong>{lobby.code}</strong><small>{`${location.origin}${location.pathname}?match=${lobby.code}`}</small></div> : null}
-        <label>Starting diameter<div className="input-row"><input type="number" min="0.1" step="0.1" value={diameterMiles} onChange={(event) => setDiameterMiles(Number(event.target.value))} /><span>miles</span></div></label>
-        <label>Total shrink time<div className="input-row"><input type="number" min="1" step="1" value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))} /><span>minutes</span></div></label>
-        <button className="primary xl" type="button" disabled={!endpoint || !lobby || busy} onClick={startMatch}><Play />Start game</button>
+        <label>
+          Starting diameter
+          <div className="input-row">
+            <input type="number" min="0.1" step="0.1" value={diameterMiles} onChange={(event) => setDiameterMiles(Number(event.target.value))} />
+            <span>miles</span>
+          </div>
+        </label>
+        <label>
+          Total shrink time
+          <div className="input-row">
+            <input type="number" min="1" step="1" value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))} />
+            <span>minutes</span>
+          </div>
+        </label>
+        <button className="primary xl" type="button" disabled={!endpoint || busy} onClick={createLobby}>
+          <Users />
+          Create lobby
+        </button>
       </div>
     </section>
   );
 }
 
-function JoinScreen({ match, matchCode, playerId, onCodeChange, onLocationRequest, locationEnabled, locationError, location, onJoined }: { match: Match | null; matchCode: string; playerId: string; onCodeChange: (code: string) => void; onLocationRequest: () => void; locationEnabled: boolean; locationError?: string; location?: Coordinate; onJoined: () => void; }) {
+function JoinScreen({
+  match,
+  matchCode,
+  playerId,
+  onCodeChange,
+  onLocationRequest,
+  locationEnabled,
+  locationError,
+  location,
+  onJoined,
+}: {
+  match: Match | null;
+  matchCode: string;
+  playerId: string;
+  onCodeChange: (code: string) => void;
+  onLocationRequest: () => void;
+  locationEnabled: boolean;
+  locationError?: string;
+  location?: Coordinate;
+  onJoined: () => void;
+}) {
   const [code, setCode] = useState(matchCode);
   const [name, setName] = useState('');
+  const joinedPlayer = match?.players[playerId];
+
+  useEffect(() => setCode(matchCode), [matchCode]);
 
   async function join() {
-    if (!match || !name.trim()) return;
-    const player: Player = { id: playerId, name: name.trim(), status: 'active', joinedAt: Date.now(), lastSeenAt: Date.now(), location, outsideSince: null };
+    if (!match) return;
+    const playerName = name.trim() || randomPlayerName();
+    const player: Player = {
+      id: playerId,
+      name: playerName,
+      status: 'active',
+      joinedAt: Date.now(),
+      lastSeenAt: Date.now(),
+      location,
+      outsideSince: null,
+    };
     await upsertPlayer(match.code, player);
+    setName(playerName);
     onJoined();
   }
 
   return (
     <section className="screen stack">
-      <div className="section-heading"><p className="eyebrow">Player join</p><h1>Join the match</h1></div>
-      <form className="form-card" onSubmit={(event) => { event.preventDefault(); onCodeChange(code); }}>
+      <div className="section-heading">
+        <p className="eyebrow">Player join</p>
+        <h1>Join the lobby</h1>
+      </div>
+
+      <form
+        className="form-card"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onCodeChange(code);
+        }}
+      >
         <label htmlFor="join-code">Match code</label>
         <input id="join-code" value={code} maxLength={5} onChange={(event) => setCode(event.target.value.toUpperCase())} />
         <button className="secondary" type="submit">Load match</button>
       </form>
+
       {match ? (
         <div className="form-card">
           <div className="match-code">{match.code}</div>
-          {match.phase === 'setup' ? <p className="ok-text">Lobby found. The game has not started yet.</p> : null}
+          <p className="ok-text">{match.phase === 'setup' ? 'Lobby found. Waiting for host.' : 'Game is live.'}</p>
           <label htmlFor="player-name">Display name</label>
-          <input id="player-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Callsign" />
-          <p className="muted">Location is used only for this active match. Host cleanup deletes match data when play is over.</p>
-          <button className="secondary" type="button" onClick={onLocationRequest}><Crosshair />{locationEnabled ? 'Refresh location permission' : 'Grant location permission'}</button>
+          <input id="player-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={joinedPlayer?.name ?? 'Random if blank'} />
+          <p className="muted">Enable GPS before joining so the host can see you as ready.</p>
+          <button className="secondary" type="button" onClick={onLocationRequest}>
+            <Crosshair />
+            {locationEnabled ? 'Refresh GPS permission' : 'Enable GPS'}
+          </button>
           {locationError ? <p className="warning-text">{locationError}</p> : null}
-          {location ? <p className="ok-text">GPS lock acquired.</p> : null}
-          <button className="primary xl" type="button" disabled={!name.trim()} onClick={join}>{match.phase === 'setup' ? 'Join lobby' : 'Enter live game'}</button>
+          {location ? <p className="ok-text">GPS ready.</p> : null}
+          <button className="primary xl" type="button" onClick={join}>
+            {joinedPlayer ? `Joined as ${joinedPlayer.name}` : 'Join lobby'}
+          </button>
         </div>
-      ) : matchCode ? <p className="warning-text">No match found for {matchCode}. Check the code, or make sure the host has created the lobby.</p> : <p className="muted">Enter a code from the host. Local simulation codes only work in this browser unless Firebase is configured.</p>}
+      ) : matchCode ? (
+        <p className="warning-text">No lobby found for {matchCode}. Check the code, or make sure Firebase is configured for multi-phone play.</p>
+      ) : (
+        <p className="muted">Open an invite link or enter a code from the host.</p>
+      )}
     </section>
   );
 }
 
-function LiveGameScreen({ match, zone, now, isHost, currentPlayer, currentLocation, simulationMode, onEnableLocation, onToggleSimulation, onGoResults }: { match: Match; zone: ReturnType<typeof calculateSafeZone>; now: number; isHost: boolean; currentPlayer?: Player; currentLocation?: Coordinate; simulationMode: boolean; onEnableLocation: () => void; onToggleSimulation: () => void; onGoResults: () => void; }) {
+function LiveGameScreen({
+  match,
+  zone,
+  now,
+  isHost,
+  currentPlayer,
+  currentLocation,
+  simulationMode,
+  onEnableLocation,
+  onToggleSimulation,
+  onGoResults,
+}: {
+  match: Match;
+  zone: ReturnType<typeof calculateSafeZone>;
+  now: number;
+  isHost: boolean;
+  currentPlayer?: Player;
+  currentLocation?: Coordinate;
+  simulationMode: boolean;
+  onEnableLocation: () => void;
+  onToggleSimulation: () => void;
+  onGoResults: () => void;
+}) {
   const players = Object.values(match.players);
   const visiblePlayers = isHost ? players : currentPlayer ? [currentPlayer] : [];
   const inside = zone && currentPlayer ? playerIsInside(match, currentPlayer.location ?? currentLocation, now) : true;
   const remainingOutsideMs = zone && currentPlayer ? getOutsideRemainingMs(currentPlayer.outsideSince, zone.diameterMeters, match.startingDiameterMeters, now) : 0;
   const edgeDistance = currentPlayer ? distanceFromZoneEdgeMeters(match, currentPlayer.location ?? currentLocation, now) : null;
 
+  async function startGame() {
+    if (!match.hiddenEndpoint || !match.startCenter) return;
+    const startedAt = Date.now();
+    const liveMatch: Match = { ...match, phase: 'live', startedAt };
+    const nextZone = calculateSafeZone(liveMatch, startedAt);
+    await patchMatch(match.code, {
+      phase: 'live',
+      startedAt,
+      visibleSafeZone: nextZone ? { ...nextZone, publishedAt: startedAt } : match.visibleSafeZone,
+    });
+  }
+
+  function invitePlayers() {
+    const message = `Join my Battle Royale Live lobby: ${joinUrl(match.code)}`;
+    window.location.href = `sms:?&body=${encodeURIComponent(message)}`;
+  }
+
   async function addSimulatedPlayers() {
     if (!zone) return;
     const simulated = buildSimulatedPlayers(zone.center, zone.radiusMeters);
-    await Promise.all(simulated.map((sim) => upsertPlayer(match.code, { id: sim.id, name: sim.name, status: 'active', joinedAt: now, lastSeenAt: now, location: sim.location, outsideSince: null, isSimulated: true })));
+    await Promise.all(
+      simulated.map((sim) =>
+        upsertPlayer(match.code, {
+          id: sim.id,
+          name: sim.name,
+          status: 'active',
+          joinedAt: now,
+          lastSeenAt: now,
+          location: sim.location,
+          outsideSince: null,
+          isSimulated: true,
+        }),
+      ),
+    );
   }
 
   if (match.phase === 'setup') {
     return (
       <section className="screen stack">
-        <div className="section-heading"><p className="eyebrow">Lobby</p><h1>Waiting for host</h1><p>The safe zone is not live yet. Keep this screen open after joining.</p></div>
+        <div className="section-heading">
+          <p className="eyebrow">Lobby</p>
+          <h1>{isHost ? 'Invite players' : 'Waiting for host'}</h1>
+          <p>{isHost ? 'Players can join now. Start the game when everyone is ready.' : 'You are in the lobby. Keep this screen open.'}</p>
+        </div>
+
         <div className="live-panel">
-          <div className="host-code"><span>Match code</span><strong>{match.code}</strong><small>{`${location.origin}${location.pathname}?match=${match.code}`}</small></div>
+          <div className="host-code">
+            <span>Match code</span>
+            <strong>{match.code}</strong>
+            <small>{joinUrl(match.code)}</small>
+          </div>
+
+          {isHost ? (
+            <div className="button-row">
+              <button className="secondary" type="button" onClick={invitePlayers}>
+                <MessageCircle />
+                Invite players
+              </button>
+              <button className="primary" type="button" onClick={startGame}>
+                <Play />
+                Start game
+              </button>
+            </div>
+          ) : null}
+
           <div className="panel-list">
             {players.length === 0 ? <p className="muted">No players have joined yet.</p> : null}
-            {players.map((player) => <div className="player-row inside" key={player.id}><div><strong>{player.name}</strong><small>{player.location ? 'GPS ready' : 'Waiting for GPS'}</small></div><span>{player.status === 'out' ? 'OUT' : 'READY'}</span></div>)}
+            {players.map((player) => (
+              <div className="player-row inside" key={player.id}>
+                <div>
+                  <strong>{player.name}</strong>
+                  <small>{player.location ? 'GPS ready' : 'Waiting for GPS'}</small>
+                </div>
+                <span>{player.status === 'out' ? 'OUT' : 'READY'}</span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -360,12 +506,34 @@ function LiveGameScreen({ match, zone, now, isHost, currentPlayer, currentLocati
     <section className="live-screen">
       <div className="live-map-wrap">
         <SafeZoneMap zone={zone} endpoint={isHost ? match.hiddenEndpoint : null} showEndpoint={isHost} players={visiblePlayers} ownLocation={currentLocation} className="live-map" />
-        {currentPlayer?.status === 'out' ? <div className="status-banner out">OUT</div> : !inside ? <div className="status-banner danger"><AlertTriangle />Outside zone: {formatClock(remainingOutsideMs)}</div> : <div className="status-banner safe">Inside safe zone</div>}
+        {currentPlayer?.status === 'out' ? (
+          <div className="status-banner out">OUT</div>
+        ) : !inside ? (
+          <div className="status-banner danger">
+            <AlertTriangle />
+            Outside zone: {formatClock(remainingOutsideMs)}
+          </div>
+        ) : (
+          <div className="status-banner safe">Inside safe zone</div>
+        )}
       </div>
+
       <div className="live-panel">
-        <div className="stats-row"><Stat label="Time" value={zone ? formatClock(zone.timeRemainingMs) : '--'} /><Stat label="Circle" value={zone ? formatDistance(zone.diameterMeters) : '--'} /><Stat label="Active" value={players.filter((player) => player.status === 'active').length.toString()} /></div>
-        {edgeDistance !== null ? <p className={edgeDistance >= 0 ? 'ok-text' : 'warning-text'}>{edgeDistance >= 0 ? `${formatDistance(edgeDistance)} inside the edge` : `${formatDistance(Math.abs(edgeDistance))} outside the edge`}</p> : null}
-        <div className="button-row"><button className="secondary" type="button" onClick={onEnableLocation}>Enable GPS</button><button className="secondary" type="button" onClick={onToggleSimulation}>{simulationMode ? 'Simulation on' : 'Simulation mode'}</button>{simulationMode || isHost ? <button className="secondary" type="button" onClick={addSimulatedPlayers}>Add sample players</button> : null}</div>
+        <div className="stats-row">
+          <Stat label="Time" value={zone ? formatClock(zone.timeRemainingMs) : '--'} />
+          <Stat label="Circle" value={zone ? formatDistance(zone.diameterMeters) : '--'} />
+          <Stat label="Active" value={players.filter((player) => player.status === 'active').length.toString()} />
+        </div>
+        {edgeDistance !== null ? (
+          <p className={edgeDistance >= 0 ? 'ok-text' : 'warning-text'}>
+            {edgeDistance >= 0 ? `${formatDistance(edgeDistance)} inside the edge` : `${formatDistance(Math.abs(edgeDistance))} outside the edge`}
+          </p>
+        ) : null}
+        <div className="button-row">
+          <button className="secondary" type="button" onClick={onEnableLocation}>Enable GPS</button>
+          <button className="secondary" type="button" onClick={onToggleSimulation}>{simulationMode ? 'Simulation on' : 'Simulation mode'}</button>
+          {simulationMode || isHost ? <button className="secondary" type="button" onClick={addSimulatedPlayers}>Add sample players</button> : null}
+        </div>
         {isHost ? <HostPanel match={match} now={now} onGoResults={onGoResults} /> : <PlayerPanel player={currentPlayer} />}
       </div>
     </section>
@@ -374,38 +542,111 @@ function LiveGameScreen({ match, zone, now, isHost, currentPlayer, currentLocati
 
 function HostPanel({ match, now, onGoResults }: { match: Match; now: number; onGoResults: () => void }) {
   const players = Object.values(match.players).sort((a, b) => a.name.localeCompare(b.name));
-  async function endMatch() { await patchMatch(match.code, { phase: 'ended', endedAt: now }); onGoResults(); }
-  return <div className="panel-list"><div className="host-code"><span>Match code</span><strong>{match.code}</strong><small>{`${location.origin}${location.pathname}?match=${match.code}`}</small></div><button className="danger-button" type="button" onClick={endMatch}>End match</button>{players.length === 0 ? <p className="muted">Waiting for players.</p> : null}{players.map((player) => <PlayerRow key={player.id} player={player} match={match} now={now} />)}</div>;
+
+  async function endMatch() {
+    await patchMatch(match.code, { phase: 'ended', endedAt: now });
+    onGoResults();
+  }
+
+  return (
+    <div className="panel-list">
+      <div className="host-code">
+        <span>Match code</span>
+        <strong>{match.code}</strong>
+        <small>{joinUrl(match.code)}</small>
+      </div>
+      <button className="danger-button" type="button" onClick={endMatch}>End match</button>
+      {players.length === 0 ? <p className="muted">Waiting for players.</p> : null}
+      {players.map((player) => <PlayerRow key={player.id} player={player} match={match} now={now} />)}
+    </div>
+  );
 }
 
 function PlayerPanel({ player }: { player?: Player }) {
   if (!player) return <p className="muted">Join this match as a player to see your live status.</p>;
-  return <div className="player-card"><span>Your status</span><strong>{player.status === 'out' ? 'OUT' : 'ACTIVE'}</strong><small>Last update {new Date(player.lastSeenAt).toLocaleTimeString()}</small></div>;
+  return (
+    <div className="player-card">
+      <span>Your status</span>
+      <strong>{player.status === 'out' ? 'OUT' : 'ACTIVE'}</strong>
+      <small>Last update {new Date(player.lastSeenAt).toLocaleTimeString()}</small>
+    </div>
+  );
 }
 
 function PlayerRow({ player, match, now }: { player: Player; match: Match; now: number }) {
-  const zone = calculateSafeZone(match, now);
-  const inside = zone ? playerIsInside(match, player.location, now) : true;
-  const remaining = zone ? getOutsideRemainingMs(player.outsideSince, zone.diameterMeters, match.startingDiameterMeters, now) : 0;
-  return <div className={`player-row ${player.status === 'out' ? 'eliminated' : inside ? 'inside' : 'outside'}`}><div><strong>{player.name}</strong><small>{player.location ? new Date(player.lastSeenAt).toLocaleTimeString() : 'No GPS fix'}</small></div><span>{player.status === 'out' ? 'OUT' : inside ? 'IN' : formatClock(remaining)}</span></div>;
+  const playerZone = calculateSafeZone(match, now);
+  const insidePlayer = playerZone ? playerIsInside(match, player.location, now) : true;
+  const remaining = playerZone ? getOutsideRemainingMs(player.outsideSince, playerZone.diameterMeters, match.startingDiameterMeters, now) : 0;
+  return (
+    <div className={`player-row ${player.status === 'out' ? 'eliminated' : insidePlayer ? 'inside' : 'outside'}`}>
+      <div>
+        <strong>{player.name}</strong>
+        <small>{player.location ? new Date(player.lastSeenAt).toLocaleTimeString() : 'No GPS fix'}</small>
+      </div>
+      <span>{player.status === 'out' ? 'OUT' : insidePlayer ? 'IN' : formatClock(remaining)}</span>
+    </div>
+  );
 }
 
 function ResultsScreen({ match, isHost, onClear }: { match: Match; isHost: boolean; onClear: () => void }) {
   const players = Object.values(match.players);
   const active = players.filter((player) => player.status === 'active');
   const eliminated = players.filter((player) => player.status === 'out');
-  async function clear() { await clearMatch(match.code); onClear(); }
-  return <section className="screen stack"><div className="section-heading"><p className="eyebrow">Game over</p><h1>{active.length ? `${active.length} survivor${active.length === 1 ? '' : 's'}` : 'No survivors'}</h1></div><div className="results-grid"><div className="result-column"><h2>Active</h2>{active.map((player) => <PlayerBadge key={player.id} player={player} />)}</div><div className="result-column"><h2>Eliminated</h2>{eliminated.map((player) => <PlayerBadge key={player.id} player={player} />)}</div></div>{isHost ? <button className="danger-button xl" type="button" onClick={clear}><Trash2 />Clear match data</button> : null}</section>;
+
+  async function clear() {
+    await clearMatch(match.code);
+    onClear();
+  }
+
+  return (
+    <section className="screen stack">
+      <div className="section-heading">
+        <p className="eyebrow">Game over</p>
+        <h1>{active.length ? `${active.length} survivor${active.length === 1 ? '' : 's'}` : 'No survivors'}</h1>
+      </div>
+      <div className="results-grid">
+        <div className="result-column">
+          <h2>Active</h2>
+          {active.map((player) => <PlayerBadge key={player.id} player={player} />)}
+        </div>
+        <div className="result-column">
+          <h2>Eliminated</h2>
+          {eliminated.map((player) => <PlayerBadge key={player.id} player={player} />)}
+        </div>
+      </div>
+      {isHost ? (
+        <button className="danger-button xl" type="button" onClick={clear}>
+          <Trash2 />
+          Clear match data
+        </button>
+      ) : null}
+    </section>
+  );
 }
 
 function SafetyPanel() {
-  return <div className="safety-panel"><AlertTriangle /><p>Play only in approved areas, avoid roads and private property, wear proper eye protection, and follow local rules.</p></div>;
+  return (
+    <div className="safety-panel">
+      <AlertTriangle />
+      <p>Play only in approved areas, avoid roads and private property, wear proper eye protection, and follow local rules.</p>
+    </div>
+  );
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
-  return <div className="stat"><span>{label}</span><strong>{value}</strong></div>;
+  return (
+    <div className="stat">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
 }
 
 function PlayerBadge({ player }: { player: Player }) {
-  return <div className="player-badge"><Users size={16} />{player.name}</div>;
+  return (
+    <div className="player-badge">
+      <Users size={16} />
+      {player.name}
+    </div>
+  );
 }
