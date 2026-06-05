@@ -27,6 +27,13 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Build
+        env:
+          VITE_FIREBASE_API_KEY: AIzaSyCyWjLau2j3nk6Apm3rvWG0HakSYxRM8gk
+          VITE_FIREBASE_AUTH_DOMAIN: battleroyaleirl.firebaseapp.com
+          VITE_FIREBASE_PROJECT_ID: battleroyaleirl
+          VITE_FIREBASE_STORAGE_BUCKET: battleroyaleirl.firebasestorage.app
+          VITE_FIREBASE_MESSAGING_SENDER_ID: "949607952294"
+          VITE_FIREBASE_APP_ID: "1:949607952294:web:97ce6789a6c414db556967"
         run: npm run build
       - name: Setup Pages
         uses: actions/configure-pages@v5
