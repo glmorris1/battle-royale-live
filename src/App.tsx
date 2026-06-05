@@ -5,7 +5,7 @@ import { useGeolocation } from './hooks/useGeolocation';
 import { useIntervalNow } from './hooks/useIntervalNow';
 import { clearMatch, createMatch, patchMatch, subscribeToMatch, upsertPlayer } from './services/matchStore';
 import type { Coordinate, Match, Player, View } from './types';
-import { DEFAULT_START_DIAMETER_METERS, FINAL_DIAMETER_METERS, formatDistance, milesToMeters } from './utils/geo';
+import { DEFAULT_START_DIAMETER_METERS, FINAL_DIAMETER_METERS, formatDistance, haversineDistanceMeters, milesToMeters } from './utils/geo';
 import {
   buildSimulatedPlayers,
   calculateSafeZone,
@@ -22,6 +22,15 @@ import {
 const PLAYER_ID_KEY = 'brl:player-id';
 const HOST_KEY_PREFIX = 'brl:host:';
 const RANDOM_NAMES = ['Ranger', 'Viper', 'Ghost', 'Comet', 'Blaze', 'Hawk', 'Nova', 'Rogue'];
+const PLAYER_WRITE_INTERVAL_MS = 3_000;
+const PLAYER_MOVE_WRITE_METERS = 5;
+
+type PlayerWriteSnapshot = {
+  at: number;
+  location?: Coordinate;
+  outsideSince?: number | null;
+  status: Player['status'];
+};
 
 function getPlayerId() {
   const existing = localStorage.getItem(PLAYER_ID_KEY);
@@ -48,6 +57,15 @@ function sameLocation(a?: Coordinate, b?: Coordinate) {
   return a.lat === b.lat && a.lng === b.lng;
 }
 
+function shouldWritePlayerUpdate(lastWrite: PlayerWriteSnapshot | undefined, player: Player, location: Coordinate, outsideSince: number | null, now: number) {
+  if (!lastWrite) return true;
+  if (player.status !== lastWrite.status) return true;
+  if (outsideSince !== lastWrite.outsideSince) return true;
+  if (!lastWrite.location) return true;
+  if (haversineDistanceMeters(lastWrite.location, location) >= PLAYER_MOVE_WRITE_METERS) return true;
+  return now - lastWrite.at >= PLAYER_WRITE_INTERVAL_MS;
+}
+
 export default function App() {
   const [view, setView] = useState<View>(getInitialCode() ? 'join' : 'home');
   const [matchCode, setMatchCode] = useState(getInitialCode());
@@ -59,6 +77,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const outsideSinceRef = useRef(new Map<string, number>());
   const lastVibrationSecondRef = useRef<number | null>(null);
+  const lastPlayerWriteRef = useRef(new Map<string, PlayerWriteSnapshot>());
   const now = useIntervalNow(500);
   const locationState = useGeolocation(locationEnabled);
 
@@ -92,7 +111,7 @@ export default function App() {
     });
 
     for (const player of trackedPlayers) {
-      const locationValue = player.id === playerId ? player.location ?? locationState.location : player.location;
+      const locationValue = player.id === playerId ? locationState.location ?? player.location : player.location;
       if (!locationValue) continue;
 
       const inside = playerIsInside(effectiveMatch, locationValue, now);
@@ -106,7 +125,14 @@ export default function App() {
       }
 
       if (shouldEliminatePlayer(effectiveMatch, outsideSince, now)) {
+        if (lastPlayerWriteRef.current.get(player.id)?.status === 'out') continue;
         outsideSinceRef.current.delete(player.id);
+        lastPlayerWriteRef.current.set(player.id, {
+          at: now,
+          location: locationValue,
+          outsideSince,
+          status: 'out',
+        });
         void upsertPlayer(effectiveMatch.code, {
           ...player,
           location: locationValue,
@@ -114,11 +140,17 @@ export default function App() {
           outsideSince,
           eliminatedAt: now,
           lastSeenAt: now,
-        });
+        }).catch(() => lastPlayerWriteRef.current.delete(player.id));
         continue;
       }
 
-      if (outsideSince !== player.outsideSince || !sameLocation(locationValue, player.location)) {
+      if ((outsideSince !== player.outsideSince || !sameLocation(locationValue, player.location)) && shouldWritePlayerUpdate(lastPlayerWriteRef.current.get(player.id), player, locationValue, outsideSince, now)) {
+        lastPlayerWriteRef.current.set(player.id, {
+          at: now,
+          location: locationValue,
+          outsideSince,
+          status: player.status,
+        });
         void upsertPlayer(effectiveMatch.code, { ...player, location: locationValue, outsideSince, lastSeenAt: now });
       }
     }
@@ -145,6 +177,14 @@ export default function App() {
 
   useEffect(() => {
     if (!match || !currentPlayer || !locationState.location || currentPlayer.status === 'out' || match.phase === 'live') return;
+    const outsideSince = currentPlayer.outsideSince ?? null;
+    if (!shouldWritePlayerUpdate(lastPlayerWriteRef.current.get(currentPlayer.id), currentPlayer, locationState.location, outsideSince, now)) return;
+    lastPlayerWriteRef.current.set(currentPlayer.id, {
+      at: now,
+      location: locationState.location,
+      outsideSince,
+      status: currentPlayer.status,
+    });
     void upsertPlayer(match.code, { ...currentPlayer, location: locationState.location, lastSeenAt: now });
   }, [currentPlayer, locationState.location, match, now]);
 
