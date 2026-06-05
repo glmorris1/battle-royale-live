@@ -89,7 +89,7 @@ export function subscribeToMatch(code: string, callback: (match: Match | null) =
 export async function createMatch(match: Match) {
   const normalized = { ...match, code: normalizeCode(match.code) };
   if (firebaseConfigured && db) {
-    await setDoc(doc(db, 'matches', normalized.code), publicFirebaseMatch(normalized));
+    await setDoc(doc(db, 'matches', normalized.code), stripUndefined(publicFirebaseMatch(normalized)));
     return;
   }
   writeLocalMatch(normalized);
@@ -99,7 +99,7 @@ export async function patchMatch(code: string, patch: Partial<Match>) {
   const normalizedCode = normalizeCode(code);
   if (firebaseConfigured && db) {
     const { hiddenEndpoint: _hiddenEndpoint, ...publicPatch } = patch;
-    await updateDoc(doc(db, 'matches', normalizedCode), publicPatch);
+    await updateDoc(doc(db, 'matches', normalizedCode), stripUndefined(publicPatch));
     return;
   }
 

@@ -275,6 +275,7 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
   const [diameterMiles, setDiameterMiles] = useState('1');
   const [durationMinutes, setDurationMinutes] = useState('30');
   const [busy, setBusy] = useState(false);
+  const [setupError, setSetupError] = useState('');
   const parsedDiameterMiles = Number(diameterMiles);
   const parsedDurationMinutes = Number(durationMinutes);
   const canCreateLobby = Boolean(endpoint && parsedDiameterMiles >= 0.1 && parsedDurationMinutes >= 1 && !busy);
@@ -282,6 +283,7 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
   async function createLobby() {
     if (!endpoint || !canCreateLobby) return;
     setBusy(true);
+    setSetupError('');
     const code = generateMatchCode();
     const hostKey = generateHostKey();
     const startingDiameterMeters = milesToMeters(parsedDiameterMiles);
@@ -309,8 +311,33 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
     };
 
     localStorage.setItem(`${HOST_KEY_PREFIX}${code}`, hostKey);
-    await createMatch(match);
-    onCreated(match, hostKey, endpoint);
+    try {
+      await createMatch(match);
+      onCreated(match, hostKey, endpoint);
+    } catch (error) {
+      console.error(error);
+      setBusy(false);
+      setSetupError(error instanceof Error ? error.message : 'Could not create lobby. Check the connection and try again.');
+    }
+  }
+
+  function useCurrentLocation() {
+    setSetupError('');
+    if (!navigator.geolocation) {
+      setSetupError('GPS is not available in this browser.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setEndpoint({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      (error) => setSetupError(error.message || 'Could not get current location.'),
+      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 5_000 },
+    );
   }
 
   return (
@@ -318,12 +345,21 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
       <div className="section-heading">
         <p className="eyebrow">Host setup</p>
         <h1>Set the final destination</h1>
-        <p>Select the hidden endpoint, starting diameter, and shrink time. Then create the lobby and invite players.</p>
+        <p>Tap the map or use GPS to set the hidden endpoint, then create the lobby and invite players.</p>
       </div>
 
       <SafeZoneMap selectable selectedPoint={endpoint} onSelectPoint={setEndpoint} showEndpoint className="setup-map" />
 
       <div className="control-panel">
+        <div className="destination-status">
+          <span>Destination</span>
+          <strong>{endpoint ? 'Selected' : 'Not selected'}</strong>
+          <small>{endpoint ? `${endpoint.lat.toFixed(5)}, ${endpoint.lng.toFixed(5)}` : 'Tap the map or use your current GPS position.'}</small>
+        </div>
+        <button className="secondary" type="button" onClick={useCurrentLocation}>
+          <Crosshair />
+          Use current location
+        </button>
         <label>
           Starting diameter
           <div className="input-row">
@@ -340,8 +376,10 @@ function MapSetupScreen({ onCreated }: { onCreated: (match: Match, hostKey: stri
         </label>
         <button className="primary xl" type="button" disabled={!canCreateLobby} onClick={createLobby}>
           <Users />
-          Create lobby
+          {busy ? 'Creating lobby...' : 'Create lobby'}
         </button>
+        {!endpoint ? <p className="muted">Choose a final destination before creating the lobby.</p> : null}
+        {setupError ? <p className="warning-text">{setupError}</p> : null}
       </div>
     </section>
   );
